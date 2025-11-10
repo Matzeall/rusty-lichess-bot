@@ -1,12 +1,13 @@
+mod main_engine;
 mod random_engine;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use random_engine::RandomEngine;
+use main_engine::MainEngine;
 use shakmaty::{Chess, Color, Move, uci::UciMove};
 
 pub fn init_engine(initial_position: Chess, bot_color: Color) -> Box<dyn Engine> {
-    let engine = RandomEngine::new(initial_position, bot_color);
+    let engine = MainEngine::new(initial_position, bot_color);
     Box::new(engine)
 }
 

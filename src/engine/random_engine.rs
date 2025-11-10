@@ -10,6 +10,7 @@ pub struct RandomEngine {
 }
 
 impl RandomEngine {
+    #[allow(dead_code)]
     pub fn new(initial_position: Chess, bot_color: Color) -> RandomEngine {
         RandomEngine {
             game: initial_position,

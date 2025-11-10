@@ -274,7 +274,7 @@ async fn bot_play_move(
         client
             .bot_play_move(&game_id.id, &uci_move, false)
             .await
-            .unwrap_or_else(|_| panic!("Error when making move ({uci_move})"));
+            .unwrap_or_else(|e| panic!("Error when making move ({uci_move}), because {e}"));
     } else {
         abort_game_cleanly_after_error(
             client,
@@ -298,11 +298,11 @@ async fn abort_game_cleanly_after_error(
 
     if let Some(msg) = chat_message {
         client
-            .bot_chat_write(&game_id.game_id, ChatRoom::Spectator, msg)
+            .bot_chat_write(&game_id.game_id, ChatRoom::Player, msg)
             .await?;
     }
     client
-        .bot_chat_write(&game_id.game_id, ChatRoom::Spectator, &game_id.fen)
+        .bot_chat_write(&game_id.game_id, ChatRoom::Player, &game_id.fen)
         .await?;
 
     client.bot_game_resign(&game_id.game_id).await?;
