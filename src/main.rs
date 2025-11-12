@@ -24,7 +24,7 @@ const MAX_SIMULTANEOUS_GAMES: usize = 3;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // start with "./rusty_lichess_bot 2>&1 | tee -a /path/to/rusty_lichess_bot.log" for a log-file
-    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
         .target(Target::Stdout)
         .init();
 
@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut waiting_challenges = Vec::new();
     let mut events = client.connect().await.unwrap();
+    // bot management event loop
     while let Some(possible_event) = events.next().await {
         match possible_event {
             Ok(event) => match event {
@@ -118,7 +119,7 @@ async fn spawn_engine_internal(client: Arc<Licheszter>, game_id: GameEventInfo) 
         .expect("Error while feathing game state stream.");
 
     debug!("got stream handle for game {}", game_id.id);
-    // stream event loop
+    // in-game event loop
     while let Some(item) = stream.next().await {
         match item {
             Ok(state) => {
@@ -168,13 +169,13 @@ async fn spawn_engine_internal(client: Arc<Licheszter>, game_id: GameEventInfo) 
                                 }
 
                                 if engine.is_my_turn() {
-                                    bot_play_move(&client, &game_id, engine).await?;
+                                    bot_play_move(client.clone(), game_id.clone(), engine).await?;
                                 }
                             }
                             None => {
                                 abort_game_cleanly_after_error(
-                                    &client,
-                                    &game_id,
+                                    client.clone(),
+                                    game_id.clone(),
                                     "Engine was not in a valid state after initialization",
                                     Some("I could not setup myself correctly. I will resign now"),
                                 )
@@ -201,13 +202,14 @@ async fn spawn_engine_internal(client: Arc<Licheszter>, game_id: GameEventInfo) 
                                         engine.update_board(uci_move).await?;
 
                                         if engine.is_my_turn() {
-                                            bot_play_move(&client, &game_id, engine).await?;
+                                            bot_play_move(client.clone(), game_id.clone(), engine)
+                                                .await?;
                                         }
                                     }
                                     None => {
                                         abort_game_cleanly_after_error(
-                                            &client,
-                                            &game_id,
+                                            client.clone(),
+                                            game_id.clone(),
                                             "engine not valid",
                                             None,
                                         )
@@ -264,17 +266,37 @@ async fn log_move(last_move: &str, in_game_state: &Chess, for_game: &str) -> Res
 }
 
 async fn bot_play_move(
-    client: &Arc<Licheszter>,
-    game_id: &GameEventInfo,
+    client: Arc<Licheszter>,
+    game_id: GameEventInfo,
     engine: &mut Box<dyn Engine>,
 ) -> Result<(), anyhow::Error> {
     if let Some(chosen_move) = engine.search().await {
         // convert move back to uci and send to lichess.org
         let uci_move = chosen_move.to_uci(CastlingMode::Standard).to_string();
-        client
-            .bot_play_move(&game_id.id, &uci_move, false)
-            .await
-            .unwrap_or_else(|e| panic!("Error when making move ({uci_move}), because {e}"));
+
+        // retry if failed
+        let retries = 3;
+        for i in 0..retries {
+            match client
+                .bot_play_move(&game_id.full_id, &uci_move, false)
+                .await
+            {
+                Ok(_) => break,
+                Err(e) => {
+                    if e.is_lichess() {
+                        info!(
+                            "Bot wanted to play {uci_move}, but game has probably already ended ({e})"
+                        );
+                        break;
+                    }
+
+                    if i >= retries - 1 {
+                        error!("reqwest error while playing move {uci_move}. - {e}");
+                        bail!("{e}")
+                    }
+                }
+            }
+        }
     } else {
         abort_game_cleanly_after_error(
             client,
@@ -289,8 +311,8 @@ async fn bot_play_move(
 }
 
 async fn abort_game_cleanly_after_error(
-    client: &Arc<Licheszter>,
-    game_id: &GameEventInfo,
+    client: Arc<Licheszter>,
+    game_id: GameEventInfo,
     error: &str,
     chat_message: Option<&str>,
 ) -> Result<(), anyhow::Error> {

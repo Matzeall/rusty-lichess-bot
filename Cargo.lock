@@ -774,8 +774,9 @@ checksum = "2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976"
 
 [[package]]
 name = "licheszter"
-version = "0.4.0"
-source = "git+https://github.com/Matzeall/licheszter?branch=main#75903e2af9aec615bd0cf038962c14aa43eb99f6"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd862ccb68d2718176fcafe10a8caad3ed94db70d99b7ca6b95b6b55038ae395"
 dependencies = [
  "comma_serde_urlencoded",
  "futures-util",
