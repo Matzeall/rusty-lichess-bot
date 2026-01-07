@@ -3,11 +3,11 @@ use std::str::FromStr;
 use anyhow::Result;
 use shakmaty::{Board, ByRole, Color, uci::UciMove};
 
-pub const QUEEN_VALUE: i32 = 9;
-pub const ROOK_VALUE: i32 = 5;
-pub const BISHOP_VALUE: i32 = 3;
-pub const KNIGHT_VALUE: i32 = 3;
-pub const PAWN_VALUE: i32 = 1;
+pub const QUEEN_VALUE: i32 = 900;
+pub const ROOK_VALUE: i32 = 500;
+pub const BISHOP_VALUE: i32 = 300;
+pub const KNIGHT_VALUE: i32 = 300;
+pub const PAWN_VALUE: i32 = 100;
 
 pub fn parse_uci_move(move_str: &str) -> Result<UciMove> {
     let uci_move = UciMove::from_str(move_str.trim())?;

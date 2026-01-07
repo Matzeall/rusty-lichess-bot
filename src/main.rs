@@ -3,7 +3,8 @@ mod util;
 
 use crate::engine::Engine;
 use anyhow::{Result, bail};
-use env_logger::{Env, Target};
+use chrono::Local;
+use fern::Dispatch;
 use futures::StreamExt;
 use licheszter::{
     client::Licheszter,
@@ -14,8 +15,10 @@ use licheszter::{
         game::{GameEventInfo, GameStatus, VariantMode},
     },
 };
+use log::LevelFilter;
 use log::{debug, error, info};
 use shakmaty::{CastlingMode, Chess, Color, Position, Square, fen::Fen};
+use std::io;
 use std::{env, str::FromStr, sync::Arc};
 use util::{parse_uci_move, parse_uci_moves};
 
@@ -23,10 +26,7 @@ const MAX_SIMULTANEOUS_GAMES: usize = 3;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // start with "./rusty_lichess_bot 2>&1 | tee -a /path/to/rusty_lichess_bot.log" for a log-file
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
-        .target(Target::Stdout)
-        .init();
+    init_logging()?;
 
     // Read the Lichess BOT token from env or local file
     let token = match env::var("LICHESS_BOT_TOKEN") {
@@ -194,8 +194,7 @@ async fn spawn_engine_internal(client: Arc<Licheszter>, game_id: GameEventInfo) 
                                             .next()
                                             .expect("Move string should contain a substring when splitting by space.");
 
-                                        log_move(last_move, engine.get_game_state(), &game_id.id)
-                                            .await?;
+                                        log_move(last_move, engine.get_game_state(), &game_id.id)?;
 
                                         // update position to current
                                         let uci_move = parse_uci_move(last_move)?;
@@ -239,7 +238,47 @@ async fn spawn_engine_internal(client: Arc<Licheszter>, game_id: GameEventInfo) 
     Ok(())
 }
 
-async fn log_move(last_move: &str, in_game_state: &Chess, for_game: &str) -> Result<()> {
+fn init_logging() -> anyhow::Result<()> {
+    // file dispatch: log everything, even trace!
+    let file_dispatch = Dispatch::new()
+        .level(LevelFilter::Debug)
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{} [{}] {} - {}",
+                Local::now().format("%d.%m.%y %H:%M:%S"),
+                record.level(),
+                record.file().unwrap_or("???"),
+                message
+            ))
+        })
+        .chain(fern::log_file("bot.log")?);
+
+    // stdout/stderr dispatch: only INFO and above
+    let stdout_dispatch = Dispatch::new()
+        .level(LevelFilter::Info)
+        .format(|out, message, record| {
+            let file = record.file().unwrap_or("???");
+            let filename = file.rsplit(&['/', '\\'][..]).next().unwrap_or(file);
+            out.finish(format_args!(
+                "[{}] {} - {}",
+                record.level(),
+                filename,
+                message
+            ))
+        })
+        .chain(io::stdout());
+
+    // Top-level dispatch
+    Dispatch::new()
+        .level(LevelFilter::Debug) // global minimum
+        .chain(file_dispatch)
+        .chain(stdout_dispatch)
+        .apply()?;
+
+    Ok(())
+}
+
+fn log_move(last_move: &str, in_game_state: &Chess, for_game: &str) -> Result<()> {
     let origin_str = &last_move[0..2];
     let dest_str = &last_move[2..4];
 
